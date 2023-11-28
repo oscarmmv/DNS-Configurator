@@ -1,6 +1,7 @@
 import speedtest
 from ping3 import ping
 import subprocess
+import platform
 import re  
 import json  
 
@@ -105,18 +106,53 @@ def perform_bandwidth_test():
 
 def set_dns(primary_dns, secondary_dns):
     try:
-        # Get a list of all network services
-        services = subprocess.check_output(['/usr/sbin/networksetup', '-listallnetworkservices']).decode().split('\n')
-        services = [s for s in services if not s.startswith('*') and s and not s.startswith('An asterisk')]
+        if platform.system() == 'Darwin':  # macOS
+            # Get a list of all network services
+            services = subprocess.check_output(['/usr/sbin/networksetup', '-listallnetworkservices']).decode().split('\n')
+            services = [s for s in services if not s.startswith('*') and s and not s.startswith('An asterisk')]
 
-        # Set DNS for each service
-        for service in services:
-            # Set primary and secondary DNS
-            subprocess.run(['/usr/sbin/networksetup', '-setdnsservers', service, primary_dns, secondary_dns])
+            # Set DNS for each service
+            for service in services:
+                # Set primary and secondary DNS
+                subprocess.run(['/usr/sbin/networksetup', '-setdnsservers', service, primary_dns, secondary_dns])
 
-            # Get the current DNS settings for the service
-            dns_settings = subprocess.check_output(['/usr/sbin/networksetup', '-getdnsservers', service]).decode().strip()
-            print(f'DNS settings for {service}: {dns_settings}')
+                # Get the current DNS settings for the service
+                dns_settings = subprocess.check_output(['/usr/sbin/networksetup', '-getdnsservers', service]).decode().strip()
+                print(f'DNS settings for {service}: {dns_settings}')
+
+        elif platform.system() == 'Linux':  # Linux
+            # Get a list of all network connections
+            connections = subprocess.check_output(['nmcli', 'con', 'show']).decode().split('\n')
+            connections = [c.split(':')[0] for c in connections if '802-3-ethernet' in c]
+
+            # Set DNS for each connection
+            for connection in connections:
+                # Set primary and secondary DNS
+                subprocess.run(['nmcli', 'con', 'mod', connection, 'ipv4.dns', f'{primary_dns} {secondary_dns}'])
+                subprocess.run(['nmcli', 'con', 'up', connection])
+
+                # Get the current DNS settings for the connection
+                dns_settings = subprocess.check_output(['nmcli', 'con', 'show', connection, 'ipv4.dns']).decode().strip()
+                print(f'DNS settings for {connection}: {dns_settings}')
+
+        elif platform.system() == 'Windows':  # Windows
+            # Get a list of all network interfaces
+            interfaces = subprocess.check_output(['netsh', 'interface', 'ipv4', 'show', 'interface']).decode().split('\n')
+            interfaces = [i.split(' ')[-1].strip() for i in interfaces if 'Up' in i]
+
+            # Set DNS for each interface
+            for interface in interfaces:
+                # Set primary and secondary DNS
+                subprocess.run(['netsh', 'interface', 'ipv4', 'set', 'dnsservers', interface, 'static', primary_dns, 'primary'])
+                subprocess.run(['netsh', 'interface', 'ipv4', 'add', 'dnsservers', interface, secondary_dns])
+
+                # Get the current DNS settings for the interface
+                dns_settings = subprocess.check_output(['netsh', 'interface', 'ipv4', 'show', 'dnsservers', interface]).decode().strip()
+                print(f'DNS settings for {interface}: {dns_settings}')
+
+        else:
+            print('Unsupported platform')
+
     except Exception as e:
         print(f'Error: {e}. Firewall may be preventing the DNS settings change.')
 
